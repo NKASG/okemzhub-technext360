@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="tn" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#0a0aff"/>
+      <stop offset="55%"  stop-color="#1a1aff"/>
+      <stop offset="100%" stop-color="#4d6bff"/>
+    </linearGradient>
+  </defs>
+  <!-- Accent dot above the mark -->
+  <circle cx="66" cy="34" r="10" fill="url(#tn)"/>
+  <!-- Rising zig-zag ribbon forming a stylised "N" that lifts into an arrow -->
+  <path d="M28 158 L66 74 L104 132 L150 58"
+        fill="none" stroke="url(#tn)" stroke-width="22"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Arrowhead at the top-right of the rising stroke -->
+  <path d="M128 54 L166 44 L158 84 Z" fill="url(#tn)"/>
+</svg>

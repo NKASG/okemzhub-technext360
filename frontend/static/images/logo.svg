@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#06d8f6"/>
+      <stop offset="45%"  stop-color="#0898d8"/>
+      <stop offset="100%" stop-color="#0d47a1"/>
+    </linearGradient>
+    <mask id="cross">
+      <rect x="72" y="16"  width="56" height="168" rx="28" fill="white"/>
+      <rect x="16" y="72"  width="168" height="56"  rx="28" fill="white"/>
+    </mask>
+  </defs>
+  <!-- Cross/blob shape filled with brand gradient -->
+  <rect x="0" y="0" width="200" height="200" fill="url(#g)" mask="url(#cross)"/>
+  <!-- White S-curve — upper arc -->
+  <path d="M 66 108 C 66 84, 82 68, 100 68 C 118 68, 134 84, 134 100 C 134 110, 126 116, 108 118"
+        fill="none" stroke="white" stroke-width="13" stroke-linecap="round"/>
+  <!-- White S-curve — lower arc -->
+  <path d="M 134 92 C 134 116, 118 132, 100 132 C 82 132, 66 116, 66 100 C 66 90, 74 84, 92 82"
+        fill="none" stroke="white" stroke-width="13" stroke-linecap="round"/>
+</svg>
