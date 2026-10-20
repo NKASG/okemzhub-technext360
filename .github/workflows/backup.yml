@@ -1,0 +1,84 @@
+# Nightly database backup. Render is the live database; this copies it to:
+#   1. Neon  - a full, up-to-date standby copy (overwritten every night)
+#   2. Cloudflare R2 - a dated backup file (skipped until the R2 secrets exist)
+#
+# Secrets: RENDER_DATABASE_URL, NEON_DATABASE_URL,
+#          R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY (optional, for R2)
+# This file only adds a scheduled job; it does not change the app.
+name: Nightly database backup
+
+on:
+  schedule:
+    - cron: "0 1 * * *"   # 01:00 UTC = 02:00 Lagos time
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/backup.yml]   # run once when this file changes
+
+env:
+  R2_ACCOUNT_ID: df9af746e319d87fb98f8708cbc8d3b4
+  R2_BUCKET: okemzhub-db-backups
+
+jobs:
+  dump-and-copy-to-neon:
+    runs-on: ubuntu-latest
+    container: postgres:18
+    steps:
+      - name: Dump Render and restore into Neon
+        shell: bash
+        env:
+          SRC: ${{ secrets.RENDER_DATABASE_URL }}
+          DST: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          [ -n "$SRC" ] || { echo "::error::Secret RENDER_DATABASE_URL is missing"; exit 1; }
+          [ -n "$DST" ] || { echo "::error::Secret NEON_DATABASE_URL is missing"; exit 1; }
+
+          mkdir -p backup
+          file="backup/render-$(date -u +%Y-%m-%d).dump"
+          pg_dump "$SRC" --format=custom --no-owner --no-privileges -f "$file"
+          echo "Backup size: $(du -h "$file" | cut -f1)"
+
+          # Replace Neon's contents in one transaction: if anything fails,
+          # Neon keeps yesterday's copy.
+          pg_restore --clean --if-exists --no-owner --no-privileges \
+            --single-transaction --exit-on-error -d "$DST" "$file"
+
+          echo "Row counts (table | Render | Neon):"
+          status=0
+          for t in $(psql "$SRC" -Atc "select tablename from pg_tables where schemaname='public' order by 1"); do
+            a=$(psql "$SRC" -Atc "select count(*) from public.\"$t\"")
+            b=$(psql "$DST" -Atc "select count(*) from public.\"$t\"")
+            mark=OK; [ "$a" = "$b" ] || { mark=MISMATCH; status=1; }
+            echo "  $t | $a | $b | $mark"
+          done
+          exit $status
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-backup
+          path: backup/
+          retention-days: 1
+
+  upload-to-r2:
+    needs: dump-and-copy-to-neon
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: db-backup
+          path: backup
+
+      - name: Upload backup file to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::warning::R2 secrets not set yet - skipping the R2 upload (Neon copy still done)."
+            exit 0
+          fi
+          aws s3 cp backup/ "s3://$R2_BUCKET/" --recursive \
+            --endpoint-url "https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          echo "Uploaded: $(ls backup)"
