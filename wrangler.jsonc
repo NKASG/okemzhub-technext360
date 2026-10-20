@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "okemzhub-technext360",
+  "main": "worker.py",
+  "compatibility_date": "2026-10-15",
+  "compatibility_flags": ["python_workers"],
+
+  // The frontend (index.html, /static/...) is served directly by Cloudflare.
+  // Asset requests are free and never run the Python code; anything that is
+  // not a file in ./frontend (the API) goes to worker.py.
+  "assets": {
+    "directory": "./frontend"
+  },
+
+  // Postgres via Hyperdrive. Create the config in the Cloudflare dashboard
+  // (Storage & Databases > Hyperdrive) and paste its ID here.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "REPLACE_WITH_YOUR_HYPERDRIVE_ID"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}
