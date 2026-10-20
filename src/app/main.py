@@ -15,7 +15,7 @@ from app.models.sale import Sale
 from app.models.user import User
 from app.routers import auth, businesses, expenses, inventory, inventory_requests, login_logs, products, sales, stock_batches, users
 
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 # Businesses seeded on first run. Slugs drive the frontend logo/theme.
 DEFAULT_BUSINESSES = [

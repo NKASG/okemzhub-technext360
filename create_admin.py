@@ -2,6 +2,9 @@
 Run once to create an owner (admin) account for one of the two businesses.
 Usage: python create_admin.py
 """
+
+import pathlib as _pathlib, sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent / "src"))  # app lives in src/
 import sys
 import getpass
 from sqlalchemy import select

@@ -7,6 +7,9 @@ Keeps: admin users and the businesses.
 
 Usage: python reset_data.py
 """
+
+import pathlib as _pathlib, sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent / "src"))  # app lives in src/
 import sys
 
 from sqlalchemy import delete, func, select

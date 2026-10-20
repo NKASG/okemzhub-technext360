@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "okemzhub-technext360",
-  "main": "worker.py",
+  "main": "src/worker.py",
   "compatibility_date": "2026-10-15",
   "compatibility_flags": ["python_workers"],
 
@@ -20,6 +20,11 @@
       "id": "42302f667936453e866071b23e81ee34"
     }
   ],
+
+  // Vendored packages: skip compiled caches to keep the upload small.
+  "python_modules": {
+    "exclude": ["**/*.pyc", "**/__pycache__"]
+  },
 
   "observability": {
     "enabled": true

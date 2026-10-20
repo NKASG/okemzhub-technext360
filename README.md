@@ -37,7 +37,7 @@ Built with **FastAPI**, **SQLAlchemy 2.0**, and a lightweight vanilla-JavaScript
 
 ```
 .
-├── app/
+├── src/app/
 │   ├── main.py               # App entry point, lifespan, router registration
 │   ├── database.py           # Engine, session, declarative Base
 │   ├── dependencies.py       # Shared FastAPI dependencies (get_db, auth)
@@ -111,7 +111,7 @@ python seed_data.py
 ### 6. Run the application
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --app-dir src --reload
 ```
 
 The app is now available at:
@@ -187,5 +187,6 @@ The app can run on Cloudflare Python Workers with a Postgres database (for examp
    ```
 
 Notes:
+- The Worker code lives in `src/` (entry point `src/worker.py`) so local folders such as `venv/` are not uploaded.
 - On Workers, startup migrations are skipped (the ASGI lifespan runs on every request there); run `init_db.py` instead.
 - The Workers Free plan allows 10 ms of CPU per request. Password hashing at login is likely to exceed this; the Workers Paid plan removes the problem without code changes.

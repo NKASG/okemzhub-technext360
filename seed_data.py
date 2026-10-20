@@ -4,6 +4,9 @@ two sister businesses (OKEMZ HUB + TechNext360).
 Run: python seed_data.py
 Safe to re-run — skips if products already exist.
 """
+
+import pathlib as _pathlib, sys as _sys
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent / "src"))  # app lives in src/
 import sys
 from datetime import datetime, timedelta, timezone
 
