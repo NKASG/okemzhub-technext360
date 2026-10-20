@@ -1,0 +1,41 @@
+# One-time copy of the Render Postgres database into Neon.
+# Runs automatically when this file is pushed to the Cloudflare branch.
+# Needs repo secrets RENDER_DATABASE_URL and NEON_DATABASE_URL.
+name: One-time copy Render to Neon
+
+on:
+  push:
+    branches: [Cloudflare]
+    paths: [.github/workflows/copy-render-to-neon.yml]
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    container: postgres:18
+    steps:
+      - name: Copy Render -> Neon
+        shell: bash
+        env:
+          SRC: ${{ secrets.RENDER_DATABASE_URL }}
+          DST: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          [ -n "$SRC" ] || { echo "::error::Secret RENDER_DATABASE_URL is missing"; exit 1; }
+          [ -n "$DST" ] || { echo "::error::Secret NEON_DATABASE_URL is missing"; exit 1; }
+
+          echo "Source:      $(psql "$SRC" -Atc 'show server_version')"
+          echo "Destination: $(psql "$DST" -Atc 'show server_version')"
+
+          pg_dump "$SRC" --format=custom --no-owner --no-privileges -f /tmp/db.dump
+          pg_restore --clean --if-exists --no-owner --no-privileges \
+            --single-transaction --exit-on-error -d "$DST" /tmp/db.dump
+
+          echo "Row counts (table | Render | Neon):"
+          status=0
+          for t in $(psql "$SRC" -Atc "select tablename from pg_tables where schemaname='public' order by 1"); do
+            a=$(psql "$SRC" -Atc "select count(*) from public.\"$t\"")
+            b=$(psql "$DST" -Atc "select count(*) from public.\"$t\"")
+            mark=OK; [ "$a" = "$b" ] || { mark=MISMATCH; status=1; }
+            echo "  $t | $a | $b | $mark"
+          done
+          exit $status
