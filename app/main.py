@@ -7,8 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, select, text
 
 import app.models  # noqa: F401 — ensures all models are registered with Base.metadata
-from app import database
-from app.database import IS_WORKERS, Base, SessionLocal
+from app.database import Base, SessionLocal, engine
 from app.models.business import Business
 from app.models.expense import Expense
 from app.models.sale import Sale
@@ -27,7 +26,6 @@ DEFAULT_BUSINESSES = [
 def _migrate_existing_tables() -> None:
     """Add missing columns to tables that already exist (no data loss).
     Run after create_all so new tables are created first."""
-    engine = database.engine
     inspector = sa_inspect(engine)
     existing_tables = set(inspector.get_table_names())
 
@@ -97,19 +95,11 @@ def _seed_and_backfill_businesses() -> None:
         db.commit()
 
 
-def init_database() -> None:
-    """Create tables, add missing columns and seed default businesses."""
-    Base.metadata.create_all(bind=database.engine)
-    _migrate_existing_tables()
-    _seed_and_backfill_businesses()
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # On Cloudflare Workers the lifespan runs on every request, so schema setup
-    # is done once from your machine with `python init_db.py` instead.
-    if not IS_WORKERS:
-        init_database()
+    Base.metadata.create_all(bind=engine)
+    _migrate_existing_tables()
+    _seed_and_backfill_businesses()
     yield
 
 
@@ -131,14 +121,12 @@ app.include_router(sales.router)
 app.include_router(expenses.router)
 app.include_router(login_logs.router)
 
-# On Cloudflare Workers the frontend is served by Workers Static Assets
-# (see wrangler.jsonc), so these routes are only registered locally.
-if not IS_WORKERS:
-    app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 
-    @app.get("/", include_in_schema=False)
-    async def serve_frontend():
-        return FileResponse(FRONTEND_DIR / "index.html")
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend():
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 
 @app.get("/health", tags=["Health"])

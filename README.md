@@ -52,7 +52,7 @@ Built with **FastAPI**, **SQLAlchemy 2.0**, and a lightweight vanilla-JavaScript
 │   └── static/               # css / js / images
 ├── create_admin.py           # CLI to create an owner (admin) account
 ├── seed_data.py              # Populate the DB with realistic mock data
-├── requirements/local.txt
+├── requirements.txt
 └── README.md
 ```
 
@@ -80,7 +80,7 @@ python -m venv .venv
 # macOS / Linux
 source .venv/bin/activate
 
-pip install -r requirements/local.txt
+pip install -r requirements.txt
 ```
 
 ### 3. Configure environment (optional)
@@ -162,30 +162,3 @@ All routes are prefixed and grouped by tag. Authenticate via `POST /auth/token` 
 ## License
 
 This project is proprietary to OKEMZ HUB / TechNext360. All rights reserved.
-
----
-
-## Deploying to Cloudflare Workers
-
-The app can run on Cloudflare Python Workers with a Postgres database (for example Neon) reached through Cloudflare Hyperdrive. The frontend is served by Workers Static Assets.
-
-**Requirements:** [uv](https://docs.astral.sh/uv/) and [Node.js](https://nodejs.org/) on your machine.
-
-1. **Prepare the database (once, and again after model changes).** From your machine, with the normal `requirements/local.txt` installed:
-   ```bash
-   DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require" python init_db.py
-   DATABASE_URL="postgresql://USER:PASSWORD@HOST/DB?sslmode=require" python create_admin.py
-   ```
-2. **Create a Hyperdrive config** in the Cloudflare dashboard (Storage & Databases → Hyperdrive) using the same connection string, then put its ID in `wrangler.jsonc`.
-3. **Set the JWT secret** (use a long random value):
-   ```bash
-   uv run pywrangler secret put SECRET_KEY
-   ```
-4. **Deploy:**
-   ```bash
-   uv run pywrangler deploy
-   ```
-
-Notes:
-- On Workers, startup migrations are skipped (the ASGI lifespan runs on every request there); run `init_db.py` instead.
-- The Workers Free plan allows 10 ms of CPU per request. Password hashing at login is likely to exceed this; the Workers Paid plan removes the problem without code changes.
