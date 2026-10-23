@@ -228,11 +228,11 @@ function updatePeriodLabel() {
 // ═══════════════════════════════════════════════════════════════════════════
 // TOAST
 // ═══════════════════════════════════════════════════════════════════════════
-function toast(msg, type = 'info') {
+function toast(msg, type = 'info', ms = 3800) {
   const el = document.createElement('div');
   el.className = `toast ${type}`; el.textContent = msg;
   document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => el.remove(), 3800);
+  setTimeout(() => el.remove(), ms);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -845,6 +845,36 @@ async function loadSales() {
       <thead><tr><th>Sale #</th><th>Product</th><th>Serial #</th><th>Buyer</th><th>Amount</th><th>Date</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
   } catch (err) { toast('Failed to load sales: ' + err.message, 'error'); }
+  loadStockSwaps();
+}
+
+const SWAP_LABEL = { swapped: 'Swapped', owed: 'Owed', cancelled: 'Cancelled' };
+const SWAP_BADGE = { swapped: 'approved', owed: 'pending', cancelled: 'rejected' };
+
+async function loadStockSwaps() {
+  getEl('swaps-table').innerHTML = '<div class="loading">Loading swaps</div>';
+  try {
+    const swaps = await API.get('/stock-swaps/');
+    const productMap = Object.fromEntries(allProducts.map(p => [p.id, `${p.brand} ${p.model_name}`]));
+    const rows = swaps.map(w => `<tr>
+        <td class="text-muted text-sm">${fmtDate(w.created_at)}</td>
+        <td>${productMap[w.product_id] ?? `Product #${w.product_id}`}</td>
+        <td>${escHtml(w.seller_business_name ?? '\u2014')} sold <span class="font-mono text-sm">${escHtml(w.sold_serial ?? '\u2014')}</span> of ${escHtml(w.owner_business_name ?? '\u2014')}</td>
+        <td class="font-mono text-sm">${w.replacement_serial ? escHtml(w.replacement_serial) : '<span class="text-muted">\u2014</span>'}</td>
+        <td><span class="badge badge-${SWAP_BADGE[w.status]}">${SWAP_LABEL[w.status]}</span></td>
+      </tr>`).join('') || emptyRow(5, 'No swaps yet.');
+    getEl('swaps-table').innerHTML = `<table>
+      <thead><tr><th>Date</th><th>Product</th><th>Sold Unit</th><th>Given Back</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  } catch (err) { toast('Failed to load swaps: ' + err.message, 'error'); }
+}
+
+// Explain what happened when the sold unit belonged to the sister shop
+function swapMessage(swap) {
+  if (!swap) return 'Sale recorded \u2014 unit marked as Sold \u2713';
+  if (swap.status === 'swapped')
+    return `Sale recorded \u2713 This unit was ${swap.owner_business_name}'s, so your unit ${swap.replacement_serial} is now registered to ${swap.owner_business_name}.`;
+  return `Sale recorded \u2713 This unit was ${swap.owner_business_name}'s and you have no spare unit of this model, so you owe them one. It will be handed over automatically when your next unit of this model is in stock.`;
 }
 
 function buyerCell(b) {
@@ -928,11 +958,11 @@ async function showRecordSaleModal(outwardId) {
     try {
       const buyer = readBuyerFields();
       const hasBuyer = Object.values(buyer).some(Boolean);
-      await API.post('/sales/', {
+      const sale = await API.post('/sales/', {
         inventory_item_id: int('f-item'), selling_price: flt('f-price'),
         ...(hasBuyer && { buyer }),
       });
-      toast('Sale recorded \u2014 unit marked as Sold \u2713', 'success');
+      toast(swapMessage(sale.swap), sale.swap?.status === 'owed' ? 'info' : 'success', sale.swap ? 9000 : 3800);
       closeModal(); loadSales(); loadInventory();
     } catch (err) { toast('Error: ' + err.message, 'error'); }
   }, 'Record Sale', 'btn-success');

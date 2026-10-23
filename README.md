@@ -13,6 +13,7 @@ Built with **FastAPI**, **SQLAlchemy 2.0**, and a lightweight vanilla-JavaScript
 - **Inventory management** — products, individual inventory items, and stock batches with cost tracking.
 - **Inventory requests** — staff request stock; admins approve/reject.
 - **Sales tracking** — record sales, attribute them to staff, and monitor monthly sales targets.
+- **Cross-shop serial swap** — when one shop sells a unit registered to its sister shop, one of the seller's own available units of the same model is re-registered to the sister shop automatically (or logged as owed and settled on the next stock-in).
 - **Expense management** — submit and approve business expenses.
 - **Login auditing** — every login attempt (success or failure) is logged with IP address.
 - **Auto-migration & seeding** — missing columns are backfilled and default businesses are created on first run.

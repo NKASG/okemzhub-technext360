@@ -16,6 +16,7 @@ from app.schemas.inventory import (
     InventoryItemUpdate,
     inventory_read_for,
 )
+from app.services.stock_swap import settle_owed_swaps
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
@@ -75,6 +76,8 @@ async def add_inventory_item(
         )
     item = InventoryItem(**payload.model_dump())
     db.add(item)
+    db.flush()
+    settle_owed_swaps(db, item.product_id)
     db.commit()
     db.refresh(item)
     return item
@@ -136,6 +139,9 @@ async def update_inventory_item(
         setattr(item, field, value)
     if item.status != ItemStatus.outward:
         item.clear_outward()
+    db.flush()
+    # A unit that is (back) in available stock may pay off an owed swap
+    settle_owed_swaps(db, item.product_id)
     db.commit()
     db.refresh(item)
     return inventory_read_for(item, current_user)
@@ -196,6 +202,9 @@ async def return_outward(
         )
     item.status = ItemStatus.available
     item.clear_outward()
+    db.flush()
+    # A unit that is (back) in available stock may pay off an owed swap
+    settle_owed_swaps(db, item.product_id)
     db.commit()
     db.refresh(item)
     return inventory_read_for(item, current_user)
