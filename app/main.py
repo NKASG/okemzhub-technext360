@@ -14,7 +14,7 @@ from app.models.business import Business
 from app.models.expense import Expense
 from app.models.sale import Sale
 from app.models.user import User
-from app.routers import auth, businesses, expenses, inventory, inventory_requests, login_logs, products, sales, stock_batches, users
+from app.routers import auth, businesses, expenses, inventory, inventory_requests, login_logs, products, sales, stock_batches, stock_swaps, users
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
@@ -124,6 +124,7 @@ app.include_router(products.router)
 app.include_router(inventory.router)
 app.include_router(inventory_requests.router)
 app.include_router(stock_batches.router)
+app.include_router(stock_swaps.router)
 app.include_router(sales.router)
 app.include_router(expenses.router)
 app.include_router(login_logs.router)
