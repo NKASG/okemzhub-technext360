@@ -314,6 +314,7 @@ async function loadDashboard() {
     getEl('stat-products').textContent  = products.length;
     getEl('stat-available').textContent = inventory.filter(i => i.status === 'available').length;
     getEl('stat-faulty').textContent    = inventory.filter(i => i.status === 'faulty').length;
+    setEl('stat-outward', inventory.filter(i => i.status === 'outward').length);
     setEl('stat-batches',  batches.length);
     setEl('stat-requests', requests.filter(r => r.status === 'pending').length);
 
@@ -485,13 +486,23 @@ function populateBusinessFilter() {
 
 // Shared "who sold it" cell — shows the seller (name + store) for units that are
 // no longer available, so both sisters can see who picked a sold unit. No prices.
+// For Outward units it shows who has the unit, since when, and who released it.
 function soldByCell(i) {
+  if (i.status === 'outward') return outwardCell(i);
   if (i.status !== 'sold') return '<span class="text-muted">\u2014</span>';
   if (!i.sold_by_name) return '<span class="text-muted">\u2014</span>';
   const store = i.sold_by_business
     ? ` <span class="badge badge-staff">${escHtml(i.sold_by_business)}</span>`
     : '';
   return `${escHtml(i.sold_by_name)}${store}`;
+}
+
+function outwardCell(i) {
+  const by = i.outward_by_name
+    ? `<div class="text-muted">by ${escHtml(i.outward_by_name)}${i.outward_by_business ? ` <span class="badge badge-staff">${escHtml(i.outward_by_business)}</span>` : ''}</div>`
+    : '';
+  const note = i.outward_note ? `<div class="text-muted">${escHtml(i.outward_note)}</div>` : '';
+  return `With <strong>${escHtml(i.outward_to)}</strong> since ${fmtDate(i.outward_at)}${by}${note}`;
 }
 
 async function loadInventory() {
@@ -524,14 +535,17 @@ async function loadInventory() {
         <td class="text-muted text-sm" style="max-width:180px">${i.fault_description ? escHtml(i.fault_description) : '\u2014'}</td>
         <td class="text-muted text-sm">${fmtDate(i.date_added)}</td>
         <td><div class="flex gap-1">
-          ${isAdmin || i.status !== 'sold' ? `<button class="btn-icon" onclick="showEditInventoryModal(${i.id})" title="Update">\u270f\ufe0f</button>` : ''}
+          ${i.status === 'available' ? `<button class="btn-icon" onclick="showOutwardModal(${i.id})" title="Mark Outward (taken out, not sold)">\ud83d\udce4</button>` : ''}
+          ${i.status === 'outward' ? `<button class="btn-icon" onclick="returnOutward(${i.id})" title="Returned to shop">\u21a9\ufe0f</button>
+          <button class="btn-icon" onclick="showRecordSaleModal(${i.id})" title="Record sale">\ud83d\udcb0</button>` : ''}
+          ${isAdmin || (i.status !== 'sold' && i.status !== 'outward') ? `<button class="btn-icon" onclick="showEditInventoryModal(${i.id})" title="Update">\u270f\ufe0f</button>` : ''}
           ${isAdmin ? `<button class="btn-icon icon-danger" onclick="deleteInventoryItem(${i.id})" title="Delete">\ud83d\uddd1</button>` : ''}
         </div></td>
       </tr>`).join('') || emptyRow(cols);
     const batchTh = isAdmin ? '<th>Batch</th>' : '';
     const costTh  = isAdmin ? '<th>Cost \u20a6</th>' : '';
     getEl('inventory-table').innerHTML = `<table>
-      <thead><tr><th>Serial #</th><th>Product</th><th>Business</th>${batchTh}<th>Status</th><th>Price \u20a6</th>${costTh}<th>Sold By</th><th>Fault Note</th><th>Date Added</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Serial #</th><th>Product</th><th>Business</th>${batchTh}<th>Status</th><th>Price \u20a6</th>${costTh}<th>Sold By / Outward</th><th>Fault Note</th><th>Date Added</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
   } catch (err) { toast('Failed to load inventory: ' + err.message, 'error'); }
 }
@@ -613,6 +627,7 @@ async function showEditInventoryModal(id) {
         <option value="available" ${item.status === 'available' ? 'selected' : ''}>Available</option>
         ${isAdmin ? `<option value="sold"      ${item.status === 'sold'      ? 'selected' : ''}>Sold</option>` : ''}
         <option value="faulty"    ${item.status === 'faulty'    ? 'selected' : ''}>Faulty</option>
+        ${item.status === 'outward' ? `<option value="outward" selected>Outward</option>` : ''}
       </select></div>
     <div class="form-group ${item.status !== 'faulty' ? 'hidden' : ''}" id="fault-group">
       <label>Fault Description</label>
@@ -632,6 +647,33 @@ async function showEditInventoryModal(id) {
       toast('Unit updated', 'success'); closeModal(); loadInventory();
     } catch (err) { toast('Error: ' + err.message, 'error'); }
   }, 'Update');
+}
+
+function showOutwardModal(id) {
+  const item = allInventory.find(x => x.id === id); if (!item) return;
+  openModal(`Mark Outward \u2014 ${escHtml(item.serial_number)}`, `
+    <div class="form-group"><label>Taken By</label>
+      <input id="f-outward-to" type="text" placeholder="e.g. John Doe (customer) or a reseller"></div>
+    <div class="form-group"><label>Note <span class="text-muted">(optional)</span></label>
+      <textarea id="f-outward-note" rows="2" placeholder="e.g. phone number, when they will return or pay"></textarea></div>
+    <p class="form-hint">The unit leaves Available stock until it is returned or sold.</p>`,
+  async () => {
+    const taken_by = val('f-outward-to').trim();
+    if (!taken_by) { toast('Enter who took the unit', 'error'); return; }
+    try {
+      await API.post(`/inventory/${id}/outward`, { taken_by, note: val('f-outward-note').trim() || null });
+      toast('Unit marked Outward', 'success'); closeModal(); loadInventory();
+    } catch (err) { toast('Error: ' + err.message, 'error'); }
+  }, 'Mark Outward');
+}
+
+async function returnOutward(id) {
+  const item = allInventory.find(x => x.id === id);
+  if (!confirm(`Has ${item?.outward_to ?? 'the unit'} been returned to the shop? It will be Available again.`)) return;
+  try {
+    await API.post(`/inventory/${id}/return`, {});
+    toast('Unit returned \u2014 Available again', 'success'); loadInventory();
+  } catch (err) { toast('Error: ' + err.message, 'error'); }
 }
 
 async function deleteInventoryItem(id) {
@@ -889,8 +931,13 @@ function fillSalePrice() {
   if (price) getEl('f-price').value = price;
 }
 
-async function showRecordSaleModal() {
-  const available = await API.get('/inventory/?item_status=available').catch(() => []);
+// outwardId (optional): sell a unit that is currently Outward, e.g. the person
+// who took it decided to buy. Otherwise pick from Available units.
+async function showRecordSaleModal(outwardId) {
+  const outwardItem = typeof outwardId === 'number' ? allInventory.find(x => x.id === outwardId) : null;
+  const available = outwardItem
+    ? [outwardItem]
+    : await API.get('/inventory/?item_status=available').catch(() => []);
   if (!available.length) { toast('No units currently available in stock.', 'error'); return; }
   if (!allProducts.length) allProducts = await API.get('/products/').catch(() => []);
   const productMap = Object.fromEntries(allProducts.map(p => [p.id, p]));
@@ -905,7 +952,7 @@ async function showRecordSaleModal() {
     <div class="form-group"><label>Selling Price (\u20a6)</label>
       <input id="f-price" type="number" step="0.01" min="0" placeholder="0.00"></div>
     <p class="form-hint"><strong>Buyer info (optional)</strong></p>
-    ${buyerFields()}
+    ${buyerFields(outwardItem ? { name: outwardItem.outward_to } : {})}
     <p class="form-hint">The unit will automatically be marked as <strong>Sold</strong>.</p>`,
   async () => {
     try {

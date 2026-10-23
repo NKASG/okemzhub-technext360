@@ -471,6 +471,7 @@ tbody tr:hover td { background: #f8fbfd; }
 .badge-available  { background: var(--success-bg);  color: var(--success-text); }
 .badge-sold       { background: var(--info-bg);      color: var(--info-text); }
 .badge-faulty     { background: var(--danger-bg);    color: var(--danger-text); }
+.badge-outward    { background: var(--warning-bg);   color: var(--warning-text); }
 .badge-pending    { background: var(--warning-bg);   color: var(--warning-text); }
 .badge-approved   { background: var(--success-bg);   color: var(--success-text); }
 .badge-rejected   { background: var(--danger-bg);    color: var(--danger-text); }

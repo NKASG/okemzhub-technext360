@@ -13,12 +13,15 @@ if TYPE_CHECKING:
     from app.models.product import Product
     from app.models.sale import Sale
     from app.models.stock_batch import StockBatch
+    from app.models.user import User
 
 
 class ItemStatus(str, enum.Enum):
     available = "available"
     sold = "sold"
     faulty = "faulty"
+    # Taken out of the shop (on approval / to show a customer) but not sold yet.
+    outward = "outward"
 
 
 class InventoryItem(Base):
@@ -47,6 +50,14 @@ class InventoryItem(Base):
     business_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("businesses.id"), nullable=True, index=True
     )
+    # Outward details: who is holding the unit outside the shop, and which
+    # staff member let it go. Cleared when the unit comes back or is sold.
+    outward_to: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    outward_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    outward_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    outward_by_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
 
     product: Mapped["Product"] = relationship("Product", back_populates="inventory_items")
     business: Mapped[Optional["Business"]] = relationship("Business")
@@ -56,6 +67,7 @@ class InventoryItem(Base):
     stock_batch: Mapped[Optional["StockBatch"]] = relationship(
         "StockBatch", back_populates="items"
     )
+    outward_by: Mapped[Optional["User"]] = relationship("User")
 
     # Shared-view helpers: reveal WHO sold a unit (name only, no price) so both
     # sisters can see who picked a unit that is no longer available.
@@ -74,3 +86,19 @@ class InventoryItem(Base):
     @property
     def business_name(self) -> Optional[str]:
         return self.business.name if self.business else None
+
+    @property
+    def outward_by_name(self) -> Optional[str]:
+        return self.outward_by.name if self.outward_by else None
+
+    @property
+    def outward_by_business(self) -> Optional[str]:
+        if self.outward_by and self.outward_by.business:
+            return self.outward_by.business.name
+        return None
+
+    def clear_outward(self) -> None:
+        self.outward_to = None
+        self.outward_note = None
+        self.outward_at = None
+        self.outward_by_user_id = None

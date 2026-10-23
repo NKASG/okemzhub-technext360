@@ -161,6 +161,10 @@
           <div class="stat-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
           <div><div class="stat-label">Faulty Units</div><div class="stat-value" id="stat-faulty">—</div></div>
         </div>
+        <div class="stat-card yellow">
+          <div class="stat-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></div>
+          <div><div class="stat-label">Outward Units</div><div class="stat-value" id="stat-outward">—</div></div>
+        </div>
         <div class="stat-card blue admin-only">
           <div class="stat-icon"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 7h-9M14 17H5M17 3v8M7 13v8"/><rect x="3" y="7" width="4" height="6" rx="1"/><rect x="17" y="11" width="4" height="6" rx="1"/></svg></div>
           <div><div class="stat-label">Stock Batches</div><div class="stat-value" id="stat-batches">—</div></div>
@@ -238,6 +242,7 @@
             <option value="available">Available</option>
             <option value="sold">Sold</option>
             <option value="faulty">Faulty</option>
+            <option value="outward">Outward</option>
           </select>
           <label for="filter-inv-business" class="filter-label">Business:</label>
           <select id="filter-inv-business">
