@@ -114,6 +114,20 @@ async def update_inventory_item(
             status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found"
         )
     changes = payload.model_dump(exclude_unset=True)
+    # Sold is only reachable by recording a sale (so a seller and price are always
+    # on record), and only left by reversing that sale - for owners too. Units
+    # marked Sold by hand before this rule have no sale, so they can still be fixed.
+    new_status = changes.get("status")
+    if new_status == ItemStatus.sold and item.status != ItemStatus.sold:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Record a sale to mark a unit Sold, so the seller is on record",
+        )
+    if item.sale and new_status not in (None, ItemStatus.sold):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reverse the sale on the Sales page to put this unit back in stock",
+        )
     if changes.get("status") == ItemStatus.outward and item.status != ItemStatus.outward:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

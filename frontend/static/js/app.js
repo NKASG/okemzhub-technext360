@@ -149,6 +149,7 @@ function setupActionButtons() {
   document.getElementById('dark-toggle-btn')?.addEventListener('click', toggleDarkMode);
   document.getElementById('filter-inv-status')?.addEventListener('change', loadInventory);
   document.getElementById('filter-inv-business')?.addEventListener('change', loadInventory);
+  document.getElementById('filter-inv-search')?.addEventListener('input', applyInventorySearch);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -523,7 +524,7 @@ async function loadInventory() {
     const productMap = Object.fromEntries(allProducts.map(p => [p.id, `${p.brand} ${p.model_name}`]));
     const cols = isAdmin ? 11 : 9;
     const rows = allInventory.map(i => `
-      <tr>
+      <tr data-serial="${escHtml(i.serial_number.toLowerCase())}">
         <td class="font-mono text-sm">${escHtml(i.serial_number)}</td>
         <td>${productMap[i.product_id] ?? `Product #${i.product_id}`}</td>
         <td>${businessBadge(i.business_id)}</td>
@@ -547,7 +548,26 @@ async function loadInventory() {
     getEl('inventory-table').innerHTML = `<table>
       <thead><tr><th>Serial #</th><th>Product</th><th>Business</th>${batchTh}<th>Status</th><th>Price \u20a6</th>${costTh}<th>Sold By / Outward</th><th>Fault Note</th><th>Date Added</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
+    applyInventorySearch();
   } catch (err) { toast('Failed to load inventory: ' + err.message, 'error'); }
+}
+
+// Live filter of the loaded rows by (partial) serial number, case-insensitive
+function applyInventorySearch() {
+  const q = val('filter-inv-search').trim().toLowerCase();
+  const rows = document.querySelectorAll('#inventory-table tbody tr[data-serial]');
+  let shown = 0;
+  rows.forEach(tr => {
+    const match = !q || tr.dataset.serial.includes(q);
+    tr.classList.toggle('hidden', !match);
+    if (match) shown++;
+  });
+  const tbody = document.querySelector('#inventory-table tbody');
+  tbody?.querySelector('.search-empty')?.remove();
+  if (q && rows.length && !shown) {
+    tbody.insertAdjacentHTML('beforeend',
+      `<tr class="search-empty"><td colspan="11" class="text-muted text-sm">No unit matches “${escHtml(q)}”.</td></tr>`);
+  }
 }
 
 async function showAddInventoryModal() {
@@ -624,9 +644,10 @@ async function showEditInventoryModal(id) {
   openModal(`Update Unit \u2014 ${escHtml(item.serial_number)}`, `
     <div class="form-group"><label>Status</label>
       <select id="f-status" onchange="toggleFaultField()">
+        ${item.status === 'sold' && item.sold_by_name ? `<option value="sold" selected>Sold</option>` : `
+        ${item.status === 'sold' ? `<option value="sold" selected>Sold (no sale recorded)</option>` : ''}
         <option value="available" ${item.status === 'available' ? 'selected' : ''}>Available</option>
-        ${isAdmin ? `<option value="sold"      ${item.status === 'sold'      ? 'selected' : ''}>Sold</option>` : ''}
-        <option value="faulty"    ${item.status === 'faulty'    ? 'selected' : ''}>Faulty</option>
+        <option value="faulty"    ${item.status === 'faulty'    ? 'selected' : ''}>Faulty</option>`}
         ${item.status === 'outward' ? `<option value="outward" selected>Outward</option>` : ''}
       </select></div>
     <div class="form-group ${item.status !== 'faulty' ? 'hidden' : ''}" id="fault-group">
