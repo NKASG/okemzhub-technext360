@@ -7,6 +7,7 @@ from app.models.inventory import InventoryItem, ItemStatus
 from app.models.sale import Sale
 from app.models.sale_buyer import SaleBuyer
 from app.models.user import User, UserRole
+from app.schemas.inventory import inventory_read_for
 from app.schemas.sale import SaleBuyerBase, SaleCreate, SaleRead, SaleReadDetailed
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
@@ -87,7 +88,9 @@ async def get_sale(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorised to view this sale",
         )
-    return sale
+    read = SaleReadDetailed.model_validate(sale)
+    read.inventory_item = inventory_read_for(sale.inventory_item, current_user)
+    return read
 
 
 @router.put("/{sale_id}/buyer", response_model=SaleRead)

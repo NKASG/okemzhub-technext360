@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.models.inventory import ItemStatus
+from app.models.user import UserRole
 
 
 class InventoryItemBase(BaseModel):
@@ -52,3 +53,12 @@ class InventoryItemRead(InventoryItemBase):
     sold_by_business: Optional[str] = None
     date_sold: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+def inventory_read_for(item, user) -> InventoryItemRead:
+    """Serialise a unit for this user. Cost price is owner-only, so it is
+    removed for staff (the frontend hiding it is not enough)."""
+    read = InventoryItemRead.model_validate(item)
+    if user.role != UserRole.admin:
+        read.cost_price = None
+    return read

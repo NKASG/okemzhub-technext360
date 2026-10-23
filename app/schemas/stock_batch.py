@@ -43,8 +43,11 @@ class StockBatchRead(StockBatchBase):
     # still doesn't match expected_unit_count — informational, lets the boss
     # know to recheck the count. Does not block units from being Available.
     needs_recheck: bool = False
-    total_unit_cost: Decimal = Decimal("0")
-    total_landed_cost: Decimal = Decimal("0")
+    # Cost figures are owner-only; they are null when a staff user lists batches
+    shipping_fee: Optional[Decimal] = Decimal("0")
+    other_expenses: Optional[Decimal] = Decimal("0")
+    total_unit_cost: Optional[Decimal] = Decimal("0")
+    total_landed_cost: Optional[Decimal] = Decimal("0")
 
 
 class StockBatchDetail(StockBatchRead):

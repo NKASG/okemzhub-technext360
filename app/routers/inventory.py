@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session, selectinload
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.inventory import InventoryItem, ItemStatus
 from app.models.sale import Sale
-from app.schemas.inventory import InventoryItemCreate, InventoryItemRead, InventoryItemUpdate
+from app.models.user import User, UserRole
+from app.schemas.inventory import (
+    InventoryItemCreate,
+    InventoryItemRead,
+    InventoryItemUpdate,
+    inventory_read_for,
+)
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
@@ -19,6 +25,10 @@ _load_seller = [
     selectinload(InventoryItem.sale).selectinload(Sale.business),
 ]
 
+# The only fields staff may change on a unit: flag it faulty (with a note) or
+# put it back to available. Prices, batch and business are owner-only.
+_STAFF_EDITABLE = {"status", "fault_description"}
+
 
 @router.get("/", response_model=list[InventoryItemRead])
 async def list_inventory(
@@ -26,9 +36,10 @@ async def list_inventory(
     item_status: Optional[ItemStatus] = None,
     business_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """List inventory units. Optionally filter by product, status or business."""
+    """List inventory units. Optionally filter by product, status or business.
+    Cost price is only included for owners (admins)."""
     query = select(InventoryItem).options(*_load_seller)
     if product_id is not None:
         query = query.where(InventoryItem.product_id == product_id)
@@ -36,7 +47,7 @@ async def list_inventory(
         query = query.where(InventoryItem.status == item_status)
     if business_id is not None:
         query = query.where(InventoryItem.business_id == business_id)
-    return db.execute(query).scalars().all()
+    return [inventory_read_for(i, current_user) for i in db.execute(query).scalars().all()]
 
 
 @router.post("/", response_model=InventoryItemRead, status_code=status.HTTP_201_CREATED,
@@ -65,7 +76,7 @@ async def add_inventory_item(
 async def get_inventory_item(
     item_id: int,
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Get a single inventory unit by ID."""
     item = db.get(InventoryItem, item_id)
@@ -73,7 +84,7 @@ async def get_inventory_item(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found"
         )
-    return item
+    return inventory_read_for(item, current_user)
 
 
 @router.patch("/{item_id}", response_model=InventoryItemRead)
@@ -81,19 +92,33 @@ async def update_inventory_item(
     item_id: int,
     payload: InventoryItemUpdate,
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """Update a unit's status (e.g. mark as Faulty with a description)."""
+    """Update a unit's status (e.g. mark as Faulty with a description).
+    Staff may only switch a unit between Available and Faulty; everything else
+    is owner-only, and units become Sold only by recording a sale."""
     item = db.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found"
         )
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if current_user.role == UserRole.staff:
+        if set(changes) - _STAFF_EDITABLE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the owner can change prices, batch or business",
+            )
+        if item.status == ItemStatus.sold or changes.get("status") == ItemStatus.sold:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Units are marked Sold by recording a sale; only the owner can change a sold unit",
+            )
+    for field, value in changes.items():
         setattr(item, field, value)
     db.commit()
     db.refresh(item)
-    return item
+    return inventory_read_for(item, current_user)
 
 
 @router.delete(
