@@ -34,14 +34,15 @@ async def create_sale(
 ):
     """
     Record a sale. Automatically marks the inventory unit as Sold.
-    Raises 409 if the unit is not currently Available.
+    Outward units can be sold too (the person who took it decided to buy).
+    Raises 409 if the unit is not currently Available or Outward.
     """
     item = db.get(InventoryItem, payload.inventory_item_id)
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found"
         )
-    if item.status != ItemStatus.available:
+    if item.status not in (ItemStatus.available, ItemStatus.outward):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Unit is not available for sale (current status: '{item.status.value}')",
@@ -62,6 +63,7 @@ async def create_sale(
             sale.buyer = SaleBuyer(**buyer_data)
     db.add(sale)
     item.status = ItemStatus.sold  # atomic status update in the same transaction
+    item.clear_outward()
     db.commit()
     db.refresh(sale)
     return sale

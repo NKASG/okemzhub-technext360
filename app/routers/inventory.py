@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -11,6 +12,7 @@ from app.models.user import User, UserRole
 from app.schemas.inventory import (
     InventoryItemCreate,
     InventoryItemRead,
+    InventoryOutward,
     InventoryItemUpdate,
     inventory_read_for,
 )
@@ -23,6 +25,7 @@ _load_seller = [
     selectinload(InventoryItem.business),
     selectinload(InventoryItem.sale).selectinload(Sale.sold_by),
     selectinload(InventoryItem.sale).selectinload(Sale.business),
+    selectinload(InventoryItem.outward_by).selectinload(User.business),
 ]
 
 # The only fields staff may change on a unit: flag it faulty (with a note) or
@@ -58,6 +61,11 @@ async def add_inventory_item(
     _: object = Depends(get_current_user),
 ):
     """Add a new individual unit to stock. Serial number must be unique."""
+    if payload.status in (ItemStatus.sold, ItemStatus.outward):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New units start as Available or Faulty",
+        )
     if db.execute(
         select(InventoryItem).where(InventoryItem.serial_number == payload.serial_number)
     ).scalar_one_or_none():
@@ -103,6 +111,11 @@ async def update_inventory_item(
             status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found"
         )
     changes = payload.model_dump(exclude_unset=True)
+    if changes.get("status") == ItemStatus.outward and item.status != ItemStatus.outward:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use the Outward action so the unit records who took it",
+        )
     if current_user.role == UserRole.staff:
         if set(changes) - _STAFF_EDITABLE:
             raise HTTPException(
@@ -114,8 +127,75 @@ async def update_inventory_item(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Units are marked Sold by recording a sale; only the owner can change a sold unit",
             )
+        if item.status == ItemStatus.outward and "status" in changes and changes["status"] != item.status:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="An Outward unit must be returned or sold, not edited",
+            )
     for field, value in changes.items():
         setattr(item, field, value)
+    if item.status != ItemStatus.outward:
+        item.clear_outward()
+    db.commit()
+    db.refresh(item)
+    return inventory_read_for(item, current_user)
+
+
+@router.post("/{item_id}/outward", response_model=InventoryItemRead)
+async def mark_outward(
+    item_id: int,
+    payload: InventoryOutward,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark an Available unit as Outward: someone has taken it out of the shop
+    (e.g. on approval) without buying it yet. Records who has it and who let it go."""
+    item = db.get(InventoryItem, item_id)
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found"
+        )
+    if item.status != ItemStatus.available:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Only Available units can go Outward (current status: '{item.status.value}')",
+        )
+    item.status = ItemStatus.outward
+    item.outward_to = payload.taken_by.strip()
+    item.outward_note = (payload.note or "").strip() or None
+    item.outward_at = datetime.now(timezone.utc)
+    item.outward_by_user_id = current_user.id
+    db.commit()
+    db.refresh(item)
+    return inventory_read_for(item, current_user)
+
+
+@router.post("/{item_id}/return", response_model=InventoryItemRead)
+async def return_outward(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Bring an Outward unit back into the shop as Available. Allowed for any
+    owner, or staff of the business that released it."""
+    item = db.get(InventoryItem, item_id)
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found"
+        )
+    if item.status != ItemStatus.outward:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="This unit is not Outward"
+        )
+    if current_user.role == UserRole.staff and item.outward_by and (
+        item.outward_by.business_id != current_user.business_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the store that released this unit can return it",
+        )
+    item.status = ItemStatus.available
+    item.clear_outward()
     db.commit()
     db.refresh(item)
     return inventory_read_for(item, current_user)

@@ -37,6 +37,10 @@ def _migrate_existing_tables() -> None:
             ("cost_price",      "NUMERIC(14,2)"),
             ("selling_price",   "NUMERIC(14,2)"),
             ("business_id",     "INTEGER REFERENCES businesses(id)"),
+            ("outward_to",      "VARCHAR(150)"),
+            ("outward_note",    "TEXT"),
+            ("outward_at",      "TIMESTAMP WITH TIME ZONE"),
+            ("outward_by_user_id", "INTEGER REFERENCES users(id)"),
         ],
         "users": [
             ("business_id", "INTEGER REFERENCES businesses(id)"),
@@ -64,6 +68,12 @@ def _migrate_existing_tables() -> None:
                 if col_name not in current_cols:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"))
         conn.commit()
+
+    # Postgres stores ItemStatus as a native enum type, so new statuses must be
+    # added to the type itself. SQLite keeps it as plain text.
+    if engine.dialect.name == "postgresql":
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text("ALTER TYPE itemstatus ADD VALUE IF NOT EXISTS 'outward'"))
 
 
 def _seed_and_backfill_businesses() -> None:

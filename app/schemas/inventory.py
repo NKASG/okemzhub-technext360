@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.inventory import ItemStatus
 from app.models.user import UserRole
@@ -44,6 +44,12 @@ class InventoryItemUpdate(BaseModel):
         return self
 
 
+class InventoryOutward(BaseModel):
+    """Mark a unit Outward: someone took it out of the shop without buying yet."""
+    taken_by: str = Field(min_length=1, max_length=150)
+    note: Optional[str] = None
+
+
 class InventoryItemRead(InventoryItemBase):
     id: int
     date_added: datetime
@@ -52,6 +58,12 @@ class InventoryItemRead(InventoryItemBase):
     sold_by_name: Optional[str] = None
     sold_by_business: Optional[str] = None
     date_sold: Optional[datetime] = None
+    # Shared visibility: who has an Outward unit, since when, and who released it
+    outward_to: Optional[str] = None
+    outward_note: Optional[str] = None
+    outward_at: Optional[datetime] = None
+    outward_by_name: Optional[str] = None
+    outward_by_business: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 
