@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, select, text
@@ -120,6 +120,16 @@ app.include_router(stock_batches.router)
 app.include_router(sales.router)
 app.include_router(expenses.router)
 app.include_router(login_logs.router)
+
+@app.middleware("http")
+async def revalidate_frontend(request: Request, call_next):
+    """Make browsers check for a newer frontend on every load so updates
+    show up without a hard refresh (unchanged files still return 304)."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 

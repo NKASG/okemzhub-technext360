@@ -8,6 +8,7 @@ let allInventoryRequests = [];
 let allUsers             = [];
 let allBatches           = [];
 let allBusinesses        = [];
+let allSales             = [];
 let dashFilter           = { type: 'all', start: null, end: null };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -292,6 +293,7 @@ const setEl = (id, text) => { const el = getEl(id); if (el) el.textContent = tex
 const val   = id => getEl(id)?.value ?? '';
 const flt   = id => parseFloat(val(id)) || 0;
 const int   = id => parseInt(val(id))   || 0;
+const esc   = str => String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DASHBOARD
@@ -779,6 +781,7 @@ async function loadSales() {
   getEl('sales-table').innerHTML = '<div class="loading">Loading sales</div>';
   try {
     const sales   = await API.get('/sales/');
+    allSales = sales;
     const isAdmin = currentUser?.role === 'admin';
     const productMap = Object.fromEntries(allProducts.map(p => [p.id, `${p.brand} ${p.model_name}`]));
     const rows = sales.map(s => {
@@ -787,17 +790,67 @@ async function loadSales() {
         <td class="font-mono text-xs text-muted">#${s.id}</td>
         <td>${productMap[unit?.product_id] ?? 'Product #?'}</td>
         <td class="font-mono text-sm text-muted">${unit?.serial_number ?? '\u2014'}</td>
+        <td>${buyerCell(s.buyer)}</td>
         <td><strong>${fmtMoney(s.selling_price)}</strong></td>
         <td class="text-muted text-sm">${fmtDate(s.date_sold)}</td>
-        ${isAdmin ? `<td>
-          <button class="btn btn-ghost btn-xs" onclick="reverseSale(${s.id})">\u27f2 Reverse</button>
-        </td>` : ''}
+        <td>
+          <button class="btn btn-ghost btn-xs" onclick="showEditBuyerModal(${s.id})">\u270e ${s.buyer ? 'Edit Buyer' : 'Add Buyer'}</button>
+          ${isAdmin ? `<button class="btn btn-ghost btn-xs" onclick="reverseSale(${s.id})">\u27f2 Reverse</button>` : ''}
+        </td>
       </tr>`;
-    }).join('') || emptyRow(isAdmin ? 6 : 5, 'No sales yet.');
+    }).join('') || emptyRow(7, 'No sales yet.');
     getEl('sales-table').innerHTML = `<table>
-      <thead><tr><th>Sale #</th><th>Product</th><th>Serial #</th><th>Amount</th><th>Date</th>${isAdmin ? '<th>Actions</th>' : ''}</tr></thead>
+      <thead><tr><th>Sale #</th><th>Product</th><th>Serial #</th><th>Buyer</th><th>Amount</th><th>Date</th><th>Actions</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
   } catch (err) { toast('Failed to load sales: ' + err.message, 'error'); }
+}
+
+function buyerCell(b) {
+  if (!b) return '<span class="text-muted">—</span>';
+  const contact = [b.phone, b.email].filter(Boolean).map(esc).join(' · ');
+  const details = [b.address && `Address: ${b.address}`, b.notes && `Notes: ${b.notes}`].filter(Boolean).join('\n');
+  return `<div${details ? ` title="${esc(details)}"` : ''}>${esc(b.name || 'Unnamed buyer')}</div>
+    ${contact ? `<div class="text-xs text-muted">${contact}</div>` : ''}`;
+}
+
+// Shared buyer inputs for the Record Sale and Edit Buyer modals
+function buyerFields(b = {}) {
+  return `
+    <div class="form-row">
+      <div class="form-group"><label>Buyer Name</label>
+        <input id="f-buyer-name" type="text" placeholder="e.g. John Doe" value="${esc(b.name)}"></div>
+      <div class="form-group"><label>Phone</label>
+        <input id="f-buyer-phone" type="tel" placeholder="e.g. 0801 234 5678" value="${esc(b.phone)}"></div>
+    </div>
+    <div class="form-group"><label>Email</label>
+      <input id="f-buyer-email" type="email" placeholder="e.g. buyer@example.com" value="${esc(b.email)}"></div>
+    <div class="form-group"><label>Address</label>
+      <input id="f-buyer-address" type="text" placeholder="Delivery or home address" value="${esc(b.address)}"></div>
+    <div class="form-group"><label>Other Info</label>
+      <textarea id="f-buyer-notes" rows="2" placeholder="Any other details about the buyer">${esc(b.notes)}</textarea></div>`;
+}
+
+function readBuyerFields() {
+  return {
+    name: val('f-buyer-name').trim(), phone: val('f-buyer-phone').trim(),
+    email: val('f-buyer-email').trim(), address: val('f-buyer-address').trim(),
+    notes: val('f-buyer-notes').trim(),
+  };
+}
+
+function showEditBuyerModal(saleId) {
+  const sale = allSales.find(s => s.id === saleId);
+  if (!sale) return;
+  openModal(`Buyer Info — Sale #${saleId}`, `
+    ${buyerFields(sale.buyer ?? {})}
+    <p class="form-hint">All fields are optional. Clear them all to remove the buyer info.</p>`,
+  async () => {
+    try {
+      await API.put(`/sales/${saleId}/buyer`, readBuyerFields());
+      toast('Buyer info saved ✓', 'success');
+      closeModal(); loadSales();
+    } catch (err) { toast('Error: ' + err.message, 'error'); }
+  }, 'Save Buyer Info');
 }
 
 function fillSalePrice() {
@@ -821,10 +874,17 @@ async function showRecordSaleModal() {
       <select id="f-item" onchange="fillSalePrice()">${opts}</select></div>
     <div class="form-group"><label>Selling Price (\u20a6)</label>
       <input id="f-price" type="number" step="0.01" min="0" placeholder="0.00"></div>
+    <p class="form-hint"><strong>Buyer info (optional)</strong></p>
+    ${buyerFields()}
     <p class="form-hint">The unit will automatically be marked as <strong>Sold</strong>.</p>`,
   async () => {
     try {
-      await API.post('/sales/', { inventory_item_id: int('f-item'), selling_price: flt('f-price') });
+      const buyer = readBuyerFields();
+      const hasBuyer = Object.values(buyer).some(Boolean);
+      await API.post('/sales/', {
+        inventory_item_id: int('f-item'), selling_price: flt('f-price'),
+        ...(hasBuyer && { buyer }),
+      });
       toast('Sale recorded \u2014 unit marked as Sold \u2713', 'success');
       closeModal(); loadSales(); loadInventory();
     } catch (err) { toast('Error: ' + err.message, 'error'); }

@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.inventory import InventoryItem, ItemStatus
 from app.models.sale import Sale
+from app.models.sale_buyer import SaleBuyer
 from app.models.user import User, UserRole
-from app.schemas.sale import SaleCreate, SaleRead, SaleReadDetailed
+from app.schemas.sale import SaleBuyerBase, SaleCreate, SaleRead, SaleReadDetailed
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
 
@@ -51,6 +52,13 @@ async def create_sale(
         business_id=current_user.business_id,
         selling_price=payload.selling_price,
     )
+    # Buyer info is optional: only save it if at least one field was filled in
+    if payload.buyer:
+        buyer_data = {
+            k: v.strip() for k, v in payload.buyer.model_dump().items() if v and v.strip()
+        }
+        if buyer_data:
+            sale.buyer = SaleBuyer(**buyer_data)
     db.add(sale)
     item.status = ItemStatus.sold  # atomic status update in the same transaction
     db.commit()
@@ -79,6 +87,39 @@ async def get_sale(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorised to view this sale",
         )
+    return sale
+
+
+@router.put("/{sale_id}/buyer", response_model=SaleRead)
+async def update_sale_buyer(
+    sale_id: int,
+    payload: SaleBuyerBase,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add or edit the optional buyer details on an existing sale.
+    Clearing every field removes the buyer info. Staff can only edit their own sales."""
+    sale = db.get(Sale, sale_id)
+    if not sale:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sale not found")
+    if sale.business_id != current_user.business_id or (
+        current_user.role == UserRole.staff and sale.sold_by_user_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorised to edit this sale",
+        )
+
+    buyer_data = {k: (v.strip() if v and v.strip() else None) for k, v in payload.model_dump().items()}
+    if not any(buyer_data.values()):
+        sale.buyer = None  # delete-orphan cascade removes the row
+    elif sale.buyer:
+        for k, v in buyer_data.items():
+            setattr(sale.buyer, k, v)
+    else:
+        sale.buyer = SaleBuyer(**buyer_data)
+    db.commit()
+    db.refresh(sale)
     return sale
 
 
