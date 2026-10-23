@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.inventory import InventoryItemRead
+from app.schemas.stock_swap import StockSwapRead
 
 
 class SaleBuyerBase(BaseModel):
@@ -35,6 +36,8 @@ class SaleRead(SaleBase):
     business_id: Optional[int] = None
     date_sold: datetime
     buyer: Optional[SaleBuyerRead] = None
+    # Present when the unit was registered to the sister shop
+    swap: Optional[StockSwapRead] = None
     model_config = ConfigDict(from_attributes=True)
 
 

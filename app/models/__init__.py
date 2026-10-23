@@ -8,6 +8,7 @@ from app.models.product import Product
 from app.models.sale import Sale
 from app.models.sale_buyer import SaleBuyer
 from app.models.stock_batch import StockBatch
+from app.models.stock_swap import StockSwap, SwapStatus
 from app.models.user import User, UserRole
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "Sale", "SaleBuyer",
     "Expense", "ExpenseStatus",
     "StockBatch",
+    "StockSwap", "SwapStatus",
     "LoginLog",
 ]

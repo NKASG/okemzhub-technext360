@@ -9,6 +9,7 @@ from app.models.sale_buyer import SaleBuyer
 from app.models.user import User, UserRole
 from app.schemas.inventory import inventory_read_for
 from app.schemas.sale import SaleBuyerBase, SaleCreate, SaleRead, SaleReadDetailed
+from app.services.stock_swap import settle_owed_swaps, swap_for_sale, undo_for_reversal
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
 
@@ -35,8 +36,11 @@ async def create_sale(
     """
     Record a sale. Automatically marks the inventory unit as Sold.
     Raises 409 if the unit is not currently Available.
+    If the unit is registered to the sister shop, it is swapped for one of the
+    seller's own available units of the same product (see services/stock_swap).
     """
-    item = db.get(InventoryItem, payload.inventory_item_id)
+    # Row-locked so two shops can't sell the same unit at the same moment
+    item = db.get(InventoryItem, payload.inventory_item_id, with_for_update=True)
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found"
@@ -62,6 +66,7 @@ async def create_sale(
             sale.buyer = SaleBuyer(**buyer_data)
     db.add(sale)
     item.status = ItemStatus.sold  # atomic status update in the same transaction
+    swap_for_sale(db, sale, item)
     db.commit()
     db.refresh(sale)
     return sale
@@ -148,6 +153,10 @@ async def reverse_sale(
     item = db.get(InventoryItem, sale.inventory_item_id)
     if item:
         item.status = ItemStatus.available  # reinstate the unit on reversal
+        undo_for_reversal(db, sale, item)
 
     db.delete(sale)
+    if item:
+        db.flush()
+        settle_owed_swaps(db, item.product_id)
     db.commit()
