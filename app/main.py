@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, select, text
 
+from app.core.config import DEFAULT_SECRET_KEY, settings
 import app.models  # noqa: F401 — ensures all models are registered with Base.metadata
 from app.database import Base, SessionLocal, engine
 from app.models.business import Business
@@ -97,6 +99,11 @@ def _seed_and_backfill_businesses() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if settings.SECRET_KEY == DEFAULT_SECRET_KEY:
+        logging.getLogger("uvicorn.error").warning(
+            "SECRET_KEY is not set - login tokens are signed with the public default key. "
+            "Set SECRET_KEY in the environment before using this in production."
+        )
     Base.metadata.create_all(bind=engine)
     _migrate_existing_tables()
     _seed_and_backfill_businesses()

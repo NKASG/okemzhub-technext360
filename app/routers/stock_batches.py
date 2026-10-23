@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.inventory_request import InventoryRequest, RequestStatus
 from app.models.stock_batch import StockBatch
+from app.models.user import User, UserRole
 from app.schemas.inventory import InventoryItemRead
 from app.schemas.stock_batch import (
     StockBatchCreate,
@@ -70,14 +71,20 @@ def _to_detail(batch: StockBatch, pending_count: int = 0) -> StockBatchDetail:
 
 
 @router.get("/", response_model=list[StockBatchRead])
-async def list_batches(db: Session = Depends(get_db), _: object = Depends(get_current_user)):
+async def list_batches(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     """List stock batches (staff need this to pick a batch when registering
-    units; admins also see cost summaries here)."""
+    units; only admins see the cost figures)."""
     batches = db.execute(
         select(StockBatch).options(*_load_items).order_by(StockBatch.date_received.desc())
     ).scalars().all()
     pending = _pending_counts(db)
-    return [_to_read(b, pending.get(b.id, 0)) for b in batches]
+    reads = [_to_read(b, pending.get(b.id, 0)) for b in batches]
+    if current_user.role != UserRole.admin:
+        for r in reads:
+            r.shipping_fee = r.other_expenses = r.total_unit_cost = r.total_landed_cost = None
+    return reads
 
 
 @router.post(

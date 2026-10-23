@@ -524,7 +524,7 @@ async function loadInventory() {
         <td class="text-muted text-sm" style="max-width:180px">${i.fault_description ? escHtml(i.fault_description) : '\u2014'}</td>
         <td class="text-muted text-sm">${fmtDate(i.date_added)}</td>
         <td><div class="flex gap-1">
-          <button class="btn-icon" onclick="showEditInventoryModal(${i.id})" title="Update">\u270f\ufe0f</button>
+          ${isAdmin || i.status !== 'sold' ? `<button class="btn-icon" onclick="showEditInventoryModal(${i.id})" title="Update">\u270f\ufe0f</button>` : ''}
           ${isAdmin ? `<button class="btn-icon icon-danger" onclick="deleteInventoryItem(${i.id})" title="Delete">\ud83d\uddd1</button>` : ''}
         </div></td>
       </tr>`).join('') || emptyRow(cols);
@@ -611,7 +611,7 @@ async function showEditInventoryModal(id) {
     <div class="form-group"><label>Status</label>
       <select id="f-status" onchange="toggleFaultField()">
         <option value="available" ${item.status === 'available' ? 'selected' : ''}>Available</option>
-        <option value="sold"      ${item.status === 'sold'      ? 'selected' : ''}>Sold</option>
+        ${isAdmin ? `<option value="sold"      ${item.status === 'sold'      ? 'selected' : ''}>Sold</option>` : ''}
         <option value="faulty"    ${item.status === 'faulty'    ? 'selected' : ''}>Faulty</option>
       </select></div>
     <div class="form-group ${item.status !== 'faulty' ? 'hidden' : ''}" id="fault-group">

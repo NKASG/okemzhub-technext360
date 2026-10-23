@@ -1,6 +1,8 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import create_access_token, verify_password
@@ -11,6 +13,11 @@ from app.schemas.token import Token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+# Brute-force guard: after this many failed attempts on one username within the
+# window, further attempts are refused until the window passes.
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_WINDOW = timedelta(minutes=15)
+
 
 @router.post("/token", response_model=Token)
 async def login(
@@ -19,6 +26,19 @@ async def login(
     db: Session = Depends(get_db),
 ):
     """Authenticate a user and return a JWT bearer token."""
+    recent_failures = db.execute(
+        select(func.count()).select_from(LoginLog).where(
+            LoginLog.username_attempted == form_data.username,
+            LoginLog.success.is_(False),
+            LoginLog.timestamp >= datetime.now(timezone.utc) - LOCKOUT_WINDOW,
+        )
+    ).scalar_one()
+    if recent_failures >= MAX_FAILED_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Try again in 15 minutes.",
+        )
+
     user = db.execute(
         select(User).where(User.username == form_data.username)
     ).scalar_one_or_none()

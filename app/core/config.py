@@ -1,9 +1,13 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Placeholder only - anyone who reads this repo knows it, so production must
+# set SECRET_KEY in the environment (main.py warns at startup if it isn't).
+DEFAULT_SECRET_KEY = "change-this-secret-key-in-production"
+
 
 class Settings(BaseSettings):
     APP_NAME: str = "Okemzhub Inventory API"
-    SECRET_KEY: str = "change-this-secret-key-in-production"
+    SECRET_KEY: str = DEFAULT_SECRET_KEY
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480  # 8 hours
 
