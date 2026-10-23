@@ -1,8 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
 
 from app.models.inventory import ItemStatus
 from app.models.user import UserRole
@@ -46,7 +46,7 @@ class InventoryItemUpdate(BaseModel):
 
 class InventoryOutward(BaseModel):
     """Mark a unit Outward: someone took it out of the shop without buying yet."""
-    taken_by: str = Field(min_length=1, max_length=150)
+    taken_by: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
     note: Optional[str] = None
 
 

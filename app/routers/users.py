@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.security import get_password_hash
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.expense import Expense
+from app.models.inventory import InventoryItem
 from app.models.inventory_request import InventoryRequest
 from app.models.sale import Sale
 from app.models.user import User
@@ -103,7 +104,7 @@ async def delete_user(
     current_user: User = Depends(require_admin),
 ):
     """[Owner] Delete a user account within your business.
-    The user's sales, expenses and stock requests are preserved and reassigned
+    The user's sales, expenses, stock requests and Outward units are preserved and reassigned
     to you (the owner) so the business books stay intact."""
     if user_id == current_user.id:
         raise HTTPException(
@@ -129,6 +130,11 @@ async def delete_user(
         update(InventoryRequest)
         .where(InventoryRequest.requested_by_user_id == user_id)
         .values(requested_by_user_id=current_user.id)
+    )
+    db.execute(
+        update(InventoryItem)
+        .where(InventoryItem.outward_by_user_id == user_id)
+        .values(outward_by_user_id=current_user.id)
     )
     db.delete(user)
     db.commit()
