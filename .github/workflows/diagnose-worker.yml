@@ -12,11 +12,11 @@ jobs:
         run: |
           B=https://okemzhub-technext360.mohafeezola.workers.dev
           probe() {
-            echo "=== $1 $2"
-            curl -s -m 60 -o body.txt -w "HTTP %{http_code} in %{time_total}s\n" "${@:3}" "$B$2" || echo "curl failed"
-            head -c 400 body.txt | tr -s '\n' ' '; echo; echo
+            r=$(curl -s -m 60 -o body.txt -w "HTTP %{http_code} in %{time_total}s" "${@:3}" "$B$2" || echo "curl failed")
+            b=$(head -c 300 body.txt | tr -s '\n\r' '  ')
+            echo "::notice title=$1 $2::$r :: $b"
           }
-          for i in 1 2; do
+          for i in 1 2 3; do
             probe GET /health
             probe POST /auth/token -X POST -d "username=zz-diagnostic-not-a-user&password=x"
           done
