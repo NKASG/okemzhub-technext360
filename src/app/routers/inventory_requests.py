@@ -11,6 +11,7 @@ from app.schemas.inventory_request import (
     InventoryRequestRead,
     InventoryRequestReview,
 )
+from app.services.stock_swap import settle_owed_swaps
 
 router = APIRouter(prefix="/inventory-requests", tags=["Inventory Requests"])
 
@@ -93,6 +94,8 @@ async def review_request(
             stock_batch_id=payload.stock_batch_id or req.stock_batch_id,
             business_id=business_id,
         ))
+        db.flush()
+        settle_owed_swaps(db, req.product_id)
     else:
         req.rejection_reason = payload.rejection_reason
 

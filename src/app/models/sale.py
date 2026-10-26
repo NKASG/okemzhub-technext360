@@ -10,6 +10,8 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.business import Business
     from app.models.inventory import InventoryItem
+    from app.models.sale_buyer import SaleBuyer
+    from app.models.stock_swap import StockSwap
     from app.models.user import User
 
 
@@ -31,3 +33,11 @@ class Sale(Base):
     inventory_item: Mapped["InventoryItem"] = relationship("InventoryItem", back_populates="sale")
     sold_by: Mapped["User"] = relationship("User", back_populates="sales")
     business: Mapped[Optional["Business"]] = relationship("Business", back_populates="sales")
+    # Optional buyer details live in their own table (sale_buyers)
+    buyer: Mapped[Optional["SaleBuyer"]] = relationship(
+        "SaleBuyer", back_populates="sale", uselist=False, cascade="all, delete-orphan"
+    )
+    # Set when this sale was of a unit registered to the sister shop
+    swap: Mapped[Optional["StockSwap"]] = relationship(
+        "StockSwap", back_populates="sale", uselist=False
+    )

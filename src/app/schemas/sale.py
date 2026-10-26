@@ -5,6 +5,20 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.inventory import InventoryItemRead
+from app.schemas.stock_swap import StockSwapRead
+
+
+class SaleBuyerBase(BaseModel):
+    """Buyer details - every field is optional."""
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SaleBuyerRead(SaleBuyerBase):
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SaleBase(BaseModel):
@@ -13,7 +27,7 @@ class SaleBase(BaseModel):
 
 
 class SaleCreate(SaleBase):
-    pass
+    buyer: Optional[SaleBuyerBase] = None
 
 
 class SaleRead(SaleBase):
@@ -21,6 +35,9 @@ class SaleRead(SaleBase):
     sold_by_user_id: int
     business_id: Optional[int] = None
     date_sold: datetime
+    buyer: Optional[SaleBuyerRead] = None
+    # Present when the unit was registered to the sister shop
+    swap: Optional[StockSwapRead] = None
     model_config = ConfigDict(from_attributes=True)
 
 

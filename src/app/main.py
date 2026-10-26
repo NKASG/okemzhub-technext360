@@ -1,11 +1,13 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect as sa_inspect, select, text
 
+from app.core.config import DEFAULT_SECRET_KEY, settings
 import app.models  # noqa: F401 — ensures all models are registered with Base.metadata
 from app import database
 from app.database import IS_WORKERS, Base, SessionLocal
@@ -13,7 +15,7 @@ from app.models.business import Business
 from app.models.expense import Expense
 from app.models.sale import Sale
 from app.models.user import User
-from app.routers import auth, businesses, expenses, inventory, inventory_requests, login_logs, products, sales, stock_batches, users
+from app.routers import auth, businesses, expenses, inventory, inventory_requests, login_logs, products, sales, stock_batches, stock_swaps, users
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -37,6 +39,10 @@ def _migrate_existing_tables() -> None:
             ("cost_price",      "NUMERIC(14,2)"),
             ("selling_price",   "NUMERIC(14,2)"),
             ("business_id",     "INTEGER REFERENCES businesses(id)"),
+            ("outward_to",      "VARCHAR(150)"),
+            ("outward_note",    "TEXT"),
+            ("outward_at",      "TIMESTAMP WITH TIME ZONE"),
+            ("outward_by_user_id", "INTEGER REFERENCES users(id)"),
         ],
         "users": [
             ("business_id", "INTEGER REFERENCES businesses(id)"),
@@ -64,6 +70,12 @@ def _migrate_existing_tables() -> None:
                 if col_name not in current_cols:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}"))
         conn.commit()
+
+    # Postgres stores ItemStatus as a native enum type, so new statuses must be
+    # added to the type itself. SQLite keeps it as plain text.
+    if engine.dialect.name == "postgresql":
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text("ALTER TYPE itemstatus ADD VALUE IF NOT EXISTS 'outward'"))
 
 
 def _seed_and_backfill_businesses() -> None:
@@ -106,6 +118,11 @@ def init_database() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if settings.SECRET_KEY == DEFAULT_SECRET_KEY:
+        logging.getLogger("uvicorn.error").warning(
+            "SECRET_KEY is not set - login tokens are signed with the public default key. "
+            "Set SECRET_KEY in the environment before using this in production."
+        )
     # On Cloudflare Workers the lifespan runs on every request, so schema setup
     # is done once from your machine with `python init_db.py` instead.
     if not IS_WORKERS:
@@ -127,9 +144,20 @@ app.include_router(products.router)
 app.include_router(inventory.router)
 app.include_router(inventory_requests.router)
 app.include_router(stock_batches.router)
+app.include_router(stock_swaps.router)
 app.include_router(sales.router)
 app.include_router(expenses.router)
 app.include_router(login_logs.router)
+
+@app.middleware("http")
+async def revalidate_frontend(request: Request, call_next):
+    """Make browsers check for a newer frontend on every load so updates
+    show up without a hard refresh (unchanged files still return 304)."""
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 
 # On Cloudflare Workers the frontend is served by Workers Static Assets
 # (see wrangler.jsonc), so these routes are only registered locally.
