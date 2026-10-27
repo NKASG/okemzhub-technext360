@@ -149,7 +149,6 @@ app.include_router(sales.router)
 app.include_router(expenses.router)
 app.include_router(login_logs.router)
 
-@app.middleware("http")
 async def revalidate_frontend(request: Request, call_next):
     """Make browsers check for a newer frontend on every load so updates
     show up without a hard refresh (unchanged files still return 304)."""
@@ -157,6 +156,12 @@ async def revalidate_frontend(request: Request, call_next):
     if request.url.path == "/" or request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
+
+
+# On Cloudflare Workers the frontend files never reach this app (Static Assets
+# serves them), so the middleware would only add overhead to API requests.
+if not IS_WORKERS:
+    app.middleware("http")(revalidate_frontend)
 
 
 # On Cloudflare Workers the frontend is served by Workers Static Assets

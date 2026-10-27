@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_current_user, get_db
 from app.models.stock_swap import StockSwap, SwapStatus
@@ -22,6 +22,13 @@ async def list_stock_swaps(
     are made automatically when a sale is recorded."""
     query = (
         select(StockSwap)
+        # Serials and shop names in batched queries, not 4 queries per swap
+        .options(
+            selectinload(StockSwap.sold_item),
+            selectinload(StockSwap.replacement_item),
+            selectinload(StockSwap.owner_business),
+            selectinload(StockSwap.seller_business),
+        )
         .where(or_(
             StockSwap.owner_business_id == current_user.business_id,
             StockSwap.seller_business_id == current_user.business_id,

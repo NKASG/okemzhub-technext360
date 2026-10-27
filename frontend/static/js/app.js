@@ -368,11 +368,14 @@ async function loadDashboard() {
 async function loadProducts() {
   getEl('products-table').innerHTML = '<div class="loading">Loading products</div>';
   try {
-    allProducts = await API.get('/products/');
-    await getBusinesses();
     // Available units per product, split by business, so admin can see how
     // many of each model currently belong to each store.
-    const inv = await API.get('/inventory/?item_status=available').catch(() => []);
+    const [products, , inv] = await Promise.all([
+      API.get('/products/'),
+      getBusinesses(),
+      API.get('/inventory/?item_status=available').catch(() => []),
+    ]);
+    allProducts = products;
     const stockMap = {};   // productId -> { businessId|'none': count }
     inv.forEach(i => {
       const key = i.business_id ?? 'none';
@@ -512,13 +515,17 @@ async function loadInventory() {
   const bf      = val('filter-inv-business');
   const isAdmin = currentUser?.role === 'admin';
   try {
-    await getBusinesses();
-    populateBusinessFilter();
     const qs = new URLSearchParams();
     if (sf) qs.set('item_status', sf);
     if (bf) qs.set('business_id', bf);
-    allInventory = await API.get('/inventory/' + (qs.toString() ? `?${qs}` : ''));
-    if (isAdmin && !allBatches.length) allBatches = await API.get('/stock-batches/').catch(() => []);
+    const [, inventory, batches] = await Promise.all([
+      getBusinesses(),
+      API.get('/inventory/' + (qs.toString() ? `?${qs}` : '')),
+      isAdmin && !allBatches.length ? API.get('/stock-batches/').catch(() => []) : Promise.resolve(null),
+    ]);
+    populateBusinessFilter();
+    allInventory = inventory;
+    if (batches) allBatches = batches;
     // oldest first so FIFO order is visible
     allInventory.sort((a, b) => new Date(a.date_added) - new Date(b.date_added));
     const productMap = Object.fromEntries(allProducts.map(p => [p.id, `${p.brand} ${p.model_name}`]));
@@ -709,10 +716,13 @@ async function deleteInventoryItem(id) {
 async function loadStockRequests() {
   getEl('stock-requests-table').innerHTML = '<div class="loading">Loading requests</div>';
   try {
-    allInventoryRequests = await API.get('/inventory-requests/');
+    const [requests, products, batches] = await Promise.all([
+      API.get('/inventory-requests/'),
+      allProducts.length ? Promise.resolve(allProducts) : API.get('/products/').catch(() => []),
+      allBatches.length ? Promise.resolve(allBatches) : API.get('/stock-batches/').catch(() => []),
+    ]);
+    allInventoryRequests = requests; allProducts = products; allBatches = batches;
     const isAdmin = currentUser?.role === 'admin';
-    if (!allProducts.length) allProducts = await API.get('/products/').catch(() => []);
-    if (!allBatches.length) allBatches = await API.get('/stock-batches/').catch(() => []);
 
     const rows = allInventoryRequests.map(r => `
       <tr>
@@ -843,12 +853,15 @@ async function updatePendingBadge() {
 async function loadSales() {
   getEl('sales-table').innerHTML = '<div class="loading">Loading sales</div>';
   try {
-    const sales   = await API.get('/sales/');
-    allSales = sales;
+    const [sales, products, inventory] = await Promise.all([
+      API.get('/sales/'), API.get('/products/'), API.get('/inventory/'),
+    ]);
+    allSales = sales; allProducts = products;
     const isAdmin = currentUser?.role === 'admin';
-    const productMap = Object.fromEntries(allProducts.map(p => [p.id, `${p.brand} ${p.model_name}`]));
+    const productMap = Object.fromEntries(products.map(p => [p.id, `${p.brand} ${p.model_name}`]));
+    const unitById = new Map(inventory.map(i => [i.id, i]));
     const rows = sales.map(s => {
-      const unit = allInventory.find(i => i.id === s.inventory_item_id);
+      const unit = unitById.get(s.inventory_item_id);
       return `<tr>
         <td class="font-mono text-xs text-muted">#${s.id}</td>
         <td>${productMap[unit?.product_id] ?? 'Product #?'}</td>

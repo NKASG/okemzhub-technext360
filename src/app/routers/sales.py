@@ -1,17 +1,28 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.dependencies import get_current_user, get_db, require_admin
 from app.models.inventory import InventoryItem, ItemStatus
 from app.models.sale import Sale
 from app.models.sale_buyer import SaleBuyer
+from app.models.stock_swap import StockSwap
 from app.models.user import User, UserRole
 from app.schemas.inventory import inventory_read_for
 from app.schemas.sale import SaleBuyerBase, SaleCreate, SaleRead, SaleReadDetailed
 from app.services.stock_swap import settle_owed_swaps, swap_for_sale, undo_for_reversal
 
 router = APIRouter(prefix="/sales", tags=["Sales"])
+
+# Load each sale's buyer and swap (plus the swap's serials and shop names) in a
+# few batched queries instead of several queries per sale.
+_load_sale_relations = [
+    selectinload(Sale.buyer),
+    selectinload(Sale.swap).selectinload(StockSwap.sold_item),
+    selectinload(Sale.swap).selectinload(StockSwap.replacement_item),
+    selectinload(Sale.swap).selectinload(StockSwap.owner_business),
+    selectinload(Sale.swap).selectinload(StockSwap.seller_business),
+]
 
 
 @router.get("/", response_model=list[SaleRead])
@@ -21,7 +32,11 @@ async def list_sales(
 ):
     """List sales for the current user's business.
     Owners (admins) see all sales in their business; staff see only their own."""
-    query = select(Sale).where(Sale.business_id == current_user.business_id)
+    query = (
+        select(Sale)
+        .options(*_load_sale_relations)
+        .where(Sale.business_id == current_user.business_id)
+    )
     if current_user.role == UserRole.staff:
         query = query.where(Sale.sold_by_user_id == current_user.id)
     return db.execute(query).scalars().all()
