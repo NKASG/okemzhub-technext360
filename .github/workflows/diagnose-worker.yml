@@ -19,7 +19,8 @@ jobs:
         env:
           RENDER: ${{ secrets.RENDER_DATABASE_URL }}
         run: |
-          export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$RENDER"
+          case "$RENDER" in *sslmode=*) L="$RENDER";; *\?*) L="$RENDER&sslmode=require";; *) L="$RENDER?sslmode=require";; esac
+          export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="$L"
           (uv run pywrangler dev --port 8787 > dev.log 2>&1 &)
           for i in $(seq 1 120); do curl -s -o /dev/null localhost:8787/health && break; sleep 3; done
           curl -s -m 120 -o b1.txt -w "health %{http_code}\n" localhost:8787/health
@@ -29,4 +30,5 @@ jobs:
           cat b2.txt; echo
           grep -v "^\s*$" dev.log | grep -iv "password\|postgres://\|postgresql://" | tail -c 6000 > tail.txt
           echo "::notice title=login response::$(head -c 300 b2.txt)"
-          echo "::notice title=dev log::$(sed ':a;N;$!ba;s/\n/%0A/g' tail.txt | tail -c 3800)"
+          sed 's/\x1b\[[0-9;]*m//g' dev.log | grep -iv "password\|postgres://\|postgresql://" | grep -E "Error|Exception|error:|refused|ssl|SSL|POST|GET" | grep -v '^\s*File' | head -40 > errs.txt
+          echo "::notice title=errors::$(sed ':a;N;$!ba;s/\n/%0A/g' errs.txt | head -c 3800)"
