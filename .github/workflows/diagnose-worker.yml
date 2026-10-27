@@ -40,4 +40,6 @@ jobs:
               except Exception:
                   note(name + " ERROR", traceback.format_exc()[-3000:])
           PY
-          python diag.py
+          python diag.py > out.txt 2>&1 || true
+          tail -c 3500 out.txt > tail.txt
+          echo "::notice title=output::$(sed ':a;N;$!ba;s/\n/%0A/g' tail.txt)"
