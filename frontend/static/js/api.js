@@ -40,13 +40,37 @@ const API = (() => {
     return res.json();
   }
 
+  /* Short-lived GET cache. Screens often ask for the same list (products,
+     stock batches, ...) several times in a row; each trip to the server costs
+     time, so identical GETs within GET_TTL_MS share one request. Any write
+     clears the cache, so your own changes always show immediately. */
+  const GET_TTL_MS = 10000;
+  const getCache = new Map(); // path -> { at, promise }
+
+  function cachedGet(path) {
+    const hit = getCache.get(path);
+    if (hit && Date.now() - hit.at < GET_TTL_MS) return hit.promise;
+    const promise = request('GET', path).catch((err) => {
+      getCache.delete(path); // never keep failures
+      throw err;
+    });
+    getCache.set(path, { at: Date.now(), promise });
+    return promise;
+  }
+
+  function write(method, path, body) {
+    getCache.clear();
+    return request(method, path, body).finally(() => getCache.clear());
+  }
+
   return {
     TOKEN_KEY,
     login,
-    get:    (p)    => request('GET',    p),
-    post:   (p, b) => request('POST',   p, b),
-    put:    (p, b) => request('PUT',    p, b),
-    patch:  (p, b) => request('PATCH',  p, b),
-    delete: (p)    => request('DELETE', p),
+    clearCache: () => getCache.clear(),
+    get:    (p)    => cachedGet(p),
+    post:   (p, b) => write('POST',   p, b),
+    put:    (p, b) => write('PUT',    p, b),
+    patch:  (p, b) => write('PATCH',  p, b),
+    delete: (p)    => write('DELETE', p),
   };
 })();
