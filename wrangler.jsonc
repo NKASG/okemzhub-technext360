@@ -21,6 +21,13 @@
     }
   ],
 
+  // Run the Worker next to the database (Render Postgres, Ohio = AWS us-east-2)
+  // instead of next to the visitor. Each page makes many sequential queries,
+  // so this turns ~200 ms per query (Lagos <-> Ohio) into ~1-3 ms.
+  "placement": {
+    "region": "aws:us-east-2"
+  },
+
   // Vendored packages: skip compiled caches to keep the upload small.
   "python_modules": {
     "exclude": ["**/*.pyc", "**/__pycache__"]
