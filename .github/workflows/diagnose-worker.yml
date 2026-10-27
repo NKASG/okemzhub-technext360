@@ -1,4 +1,5 @@
-# Temporary diagnostic: checks the Worker and the domain from outside.
+# Temporary diagnostic: run the app's login against Neon with the same driver
+# the Worker uses (pg8000) and report any error.
 name: Diagnose Cloudflare Worker
 on:
   push:
@@ -8,21 +9,35 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe
+      - uses: actions/checkout@v4
+        with: { ref: Cloudflare }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - name: Reproduce login
+        env:
+          NEON: ${{ secrets.NEON_DATABASE_URL }}
         run: |
-          for d in okemztech360.com www.okemztech360.com app.okemztech360.com; do
-            ns=$(dig +short NS "${d#www.}" | tr '\n' ' '); a=$(dig +short "$d" | tr '\n' ' ')
-            echo "::notice title=DNS $d::NS=[$ns] A=[$a]"
-          done
-          probe() {
-            r=$(curl -s -m 60 -o body.txt -w "HTTP %{http_code} in %{time_total}s" "${@:3}" "$2" || echo "curl failed")
-            b=$(head -c 200 body.txt | tr -s '\n\r' '  ')
-            echo "::notice title=$1 $2::$r :: $b"
-          }
-          W=https://okemzhub-technext360.mohafeezola.workers.dev
-          for i in 1 2 3; do
-            probe GET $W/health
-            probe POST $W/auth/token -X POST -d "username=zz-diagnostic-not-a-user&password=x"
-          done
-          probe GET https://okemztech360.com/health
-          probe GET https://www.okemztech360.com/health
+          pip -q install fastapi "sqlalchemy>=2.0.31" pydantic pydantic-settings bcrypt "python-jose" python-multipart pg8000 httpx
+          cat > diag.py <<'PY'
+          import os, sys, traceback, ssl
+          sys.path.insert(0, "src")
+          from sqlalchemy.engine import make_url
+          from sqlalchemy.pool import NullPool
+          u = make_url(os.environ["NEON"])
+          url = u.set(drivername="postgresql+pg8000", query={})
+          from app import database
+          database.init_engine(url, poolclass=NullPool, connect_args={"ssl_context": ssl.create_default_context()})
+          from fastapi.testclient import TestClient
+          from app.main import app
+          def note(t, m): print(f"::notice title={t}::" + m.replace("\n", "%0A")[:3500])
+          c = TestClient(app, raise_server_exceptions=True)
+          for name, path, kw in [
+              ("bogus login", "/auth/token", dict(method="POST", data={"username": "zz-diagnostic-not-a-user", "password": "x"})),
+          ]:
+              try:
+                  r = c.request(kw.pop("method"), path, **kw)
+                  note(name, f"HTTP {r.status_code}: {r.text[:300]}")
+              except Exception:
+                  note(name + " ERROR", traceback.format_exc()[-3000:])
+          PY
+          python diag.py
