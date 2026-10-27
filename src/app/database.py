@@ -15,11 +15,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False)
 engine = None
 
 
-def init_engine(url, **engine_kwargs):
+def init_engine(url, connect_args=None, **engine_kwargs):
     """Create the global engine and bind SessionLocal to it."""
     global engine
+    connect_args = dict(connect_args or {})
     # check_same_thread is SQLite-only; ignored for other databases
-    connect_args = {"check_same_thread": False} if str(url).startswith("sqlite") else {}
+    if str(url).startswith("sqlite"):
+        connect_args.setdefault("check_same_thread", False)
     engine = create_engine(url, connect_args=connect_args, **engine_kwargs)
     SessionLocal.configure(bind=engine)
     return engine

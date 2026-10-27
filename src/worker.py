@@ -33,7 +33,10 @@ def _configure(env) -> None:
     )
     # Workers cannot reuse a socket across requests, and Hyperdrive already
     # pools connections, so SQLAlchemy should not keep its own pool.
-    database.init_engine(url, poolclass=NullPool)
+    # Hyperdrive already encrypts the connection to the database, and the
+    # Workers runtime does not allow upgrading this socket to TLS, so pg8000
+    # must not try (it otherwise attempts SSL whenever the server offers it).
+    database.init_engine(url, poolclass=NullPool, connect_args={"ssl_context": False})
 
     secret = getattr(env, "SECRET_KEY", None)
     if secret:

@@ -25,6 +25,7 @@ jobs:
           curl -s -m 120 -o b1.txt -w "health %{http_code}\n" localhost:8787/health
           curl -s -m 120 -o b2.txt -w "login %{http_code}\n" -X POST -d "username=zz-diagnostic-not-a-user&password=x" localhost:8787/auth/token
           sleep 3
+          echo "::notice title=health::$(head -c 200 b1.txt)"
           cat b2.txt; echo
           grep -v "^\s*$" dev.log | grep -iv "password\|postgres://\|postgresql://" | tail -c 6000 > tail.txt
           echo "::notice title=login response::$(head -c 300 b2.txt)"
